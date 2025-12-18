@@ -1,0 +1,5 @@
+<Solution>
+  <Project Path="JobRunner.Domain/JobRunner.Domain.csproj" />
+  <Project Path="JobRunner.Infrastructure/JobRunner.Infrastructure.csproj" />
+  <Project Path="JobRunner/JobRunner.csproj" />
+</Solution>
