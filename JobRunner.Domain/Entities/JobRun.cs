@@ -10,6 +10,7 @@ public class JobRun
     public RunStatus Status { get; set; }
     public Guid? IdempotencyKey { get; set; }
     public DateTime? NextVisibleUtc { get; set; }
+    public DateTime? StartedAtUtc { get; set; }
 
     //public byte[]? RowVersion { get; set; }
     public long Version { get; set; }
