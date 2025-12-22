@@ -11,4 +11,6 @@ public class Job
     required public String JobType { get; set; }
 
     public List<JobRun> JobRuns { get; set; } = new();
+    public int MaxAttempts { get; set; }
+
 }

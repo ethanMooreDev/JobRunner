@@ -7,6 +7,7 @@ public class JobAttempt
     public Guid Id { get; set; } = Guid.NewGuid();
     public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
 
+    public DateTime? CompletedAtUtc { get; set; }
     public AttemptStatus Status { get; set; }
     public int AttemptNumber { get; set; }
     public string? Error { get; set; }

@@ -2,6 +2,8 @@
 using JobRunner.Domain.Enums;
 using JobRunner.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
+using JobRunner.Domain.Entities;
+using System.Net.WebSockets;
 
 namespace JobRunner.Infrastructure.Queues;
 
@@ -42,5 +44,120 @@ public class EfJobQueue : IJobQueue
             }, ct);
 
         return rowsAffected == 1;
+    }
+
+    public async Task<Guid> CreateAttemptAsync(Guid runId, DateTime nowUtc, CancellationToken ct)
+    {
+        var jobAttemptsCount = await _db.JobRuns
+            .AsNoTracking()
+            .Where(r => r.Id == runId && r.Status == RunStatus.Running)
+            .Select(r => (int?)r.JobAttempts.Count)
+            .FirstOrDefaultAsync(ct);
+
+        if (jobAttemptsCount == null)
+        {
+            throw new InvalidOperationException($"Cannot create attempt for job run {runId} because it does not exist or is not running.");
+        }
+
+        var attempt = new JobAttempt
+        {
+            Id = Guid.NewGuid(),
+            JobRunId = runId,
+            AttemptNumber = jobAttemptsCount.Value + 1,
+            Status = AttemptStatus.Running,
+            CreatedAtUtc = nowUtc
+        };
+
+        _db.JobAttempts.Add(attempt);
+
+        await _db.SaveChangesAsync(ct);
+
+        return attempt.Id;
+    }
+    public async Task MarkSucceededAsync(Guid runId, Guid attemptId, DateTime nowUtc, CancellationToken ct)
+    {
+        int rowsAffected = await _db.JobRuns
+            .Where(r => r.Id == runId && r.Status == RunStatus.Running)
+            .ExecuteUpdateAsync(jobRun =>
+            {
+                jobRun
+                    .SetProperty(s => s.Status, RunStatus.Succeeded)
+                    .SetProperty(s => s.CompletedAtUtc, nowUtc)
+                    .SetProperty(s => s.NextVisibleUtc, (DateTime?) null)
+                    .SetProperty(s => s.Version, s => s.Version + 1);
+            }, ct);
+
+        if (rowsAffected != 1)
+        {
+            throw new InvalidOperationException($"Cannot mark job run {runId} as succeeded because it does not exist or is not running.");
+        }
+
+        rowsAffected = await _db.JobAttempts
+            .Where(a => a.Id == attemptId && a.JobRunId == runId && a.Status == AttemptStatus.Running)
+            .ExecuteUpdateAsync(jobAttempt =>
+            {
+                jobAttempt
+                    .SetProperty(s => s.Status, AttemptStatus.Succeeded)
+                    .SetProperty(s => s.CompletedAtUtc, nowUtc);
+            }, ct);
+
+        if (rowsAffected != 1)
+        {
+            throw new InvalidOperationException($"Cannot mark job attempt {attemptId} as succeeded because it does not exist or is not running.");
+        }
+    }
+    public async Task MarkFailedAsync(Guid runId, Guid attemptId, DateTime nowUtc, string error, DateTime? nextVisibleUtc, bool terminal, CancellationToken ct)
+    {
+        if(!terminal && nextVisibleUtc == null)
+        {
+            throw new ArgumentException("nextVisibleUtc must be provided when terminal is false.", nameof(nextVisibleUtc));
+        }
+
+        int rowsAffected = await _db.JobAttempts
+            .Where(a => a.Id == attemptId && a.JobRunId == runId && a.Status == AttemptStatus.Running)
+            .ExecuteUpdateAsync(jobAttempt =>
+            {
+                jobAttempt
+                    .SetProperty(s => s.Status, AttemptStatus.Failed)
+                    .SetProperty(s => s.CompletedAtUtc, nowUtc)
+                    .SetProperty(s => s.Error, error);
+            }, ct);
+
+        if (rowsAffected != 1)
+        {
+            throw new InvalidOperationException($"Cannot mark job attempt {attemptId} as failed because it does not exist or is not running.");
+        }
+
+        if(terminal)
+        {
+            rowsAffected = await _db.JobRuns
+           .Where(r => r.Id == runId && r.Status == RunStatus.Running)
+           .ExecuteUpdateAsync(jobRun =>
+           {
+               jobRun
+                    .SetProperty(s => s.Status, RunStatus.Failed)
+                    .SetProperty(s => s.CompletedAtUtc, nowUtc)
+                    .SetProperty(s => s.NextVisibleUtc, (DateTime?)null)
+                    .SetProperty(s => s.Version, s => s.Version + 1);
+           }, ct);
+        }
+        else
+        {
+            rowsAffected = await _db.JobRuns
+           .Where(r => r.Id == runId && r.Status == RunStatus.Running)
+           .ExecuteUpdateAsync(jobRun =>
+           {
+                jobRun
+                    .SetProperty(s => s.Status, RunStatus.Queued)
+                    .SetProperty(s => s.NextVisibleUtc, nextVisibleUtc)
+                    .SetProperty(s => s.Version, s => s.Version + 1)
+                    .SetProperty(s => s.CompletedAtUtc, (DateTime?) null);
+           }, ct);
+        }
+
+        if(rowsAffected != 1)
+        {
+            throw new InvalidOperationException($"Cannot mark job run {runId} as failed because it does not exist or is not running.");
+        }
     }
 }

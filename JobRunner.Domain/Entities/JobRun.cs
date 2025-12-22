@@ -7,6 +7,7 @@ public class JobRun
     public Guid Id { get; set; } = Guid.NewGuid();
     public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
 
+    public DateTime? CompletedAtUtc { get; set; }
     public RunStatus Status { get; set; }
     public Guid? IdempotencyKey { get; set; }
     public DateTime? NextVisibleUtc { get; set; }
