@@ -29,12 +29,44 @@ public class JobRunnerWorker : BackgroundService
                 if (runId != null)
                 {
                     var acquired = await jobQueue.TryAcquireAsync(runId.Value, now, stoppingToken);
+
                     if (acquired)
                     {
                         _logger.LogInformation("Acquired job run {JobRunId} for processing.", runId.Value);
 
-                        // Simulate job processing
-                        await Task.Delay(TimeSpan.FromMilliseconds(500), stoppingToken);
+                        var attemptStart = await jobQueue.CreateAttemptAsync(runId.Value, DateTime.UtcNow, stoppingToken);
+
+                        var attemptId = attemptStart.AttemptId;
+                        var attemptNumber = attemptStart.AttemptNumber;
+                        var maxAttempts = attemptStart.MaxAttempts;
+
+                        _logger.LogInformation("Attempt {AttemptNumber}/{MaxAttempts}", attemptNumber, maxAttempts);
+
+                        try
+                        {
+                            // Simulate job processing
+                            await Task.Delay(TimeSpan.FromMilliseconds(500), stoppingToken);
+
+                            await jobQueue.MarkSucceededAsync(runId.Value, attemptId, DateTime.UtcNow, stoppingToken);
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogError(ex, "Job run {JobRunId} (Attempt {AttemptNumber}/{MaxAttempts}) failed during processing.", runId.Value, attemptNumber, maxAttempts);
+
+                            var failedAtUtc = DateTime.UtcNow;
+                            var terminal = attemptNumber >= maxAttempts;
+
+                            if (!terminal)
+                            {
+                                var backOff = GetBackOff(attemptNumber);
+                                _logger.LogInformation("Scheduling retry for job run {JobRunId} in {BackOff} seconds.", runId.Value, backOff.TotalSeconds);
+                                await jobQueue.MarkFailedAsync(runId.Value, attemptId, failedAtUtc, ex.ToString(), failedAtUtc.Add(backOff), terminal, stoppingToken);
+                                continue;
+                            }
+
+                            await jobQueue.MarkFailedAsync(runId.Value, attemptId, failedAtUtc, ex.ToString(), null, terminal, stoppingToken);
+                            continue;
+                        }
                     }
                     else
                     {
@@ -59,5 +91,10 @@ public class JobRunnerWorker : BackgroundService
                 await Task.Delay(TimeSpan.FromSeconds(2), stoppingToken);
             }
         }
+    }
+
+    private static TimeSpan GetBackOff(int attemptNumber)
+    {
+        return TimeSpan.FromSeconds(Math.Min(300, 5 * Math.Pow(2, attemptNumber - 1)));
     }
 }

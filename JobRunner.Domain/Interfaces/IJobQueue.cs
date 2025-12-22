@@ -1,4 +1,6 @@
-﻿namespace JobRunner.Domain.Interfaces;
+﻿using JobRunner.Domain.Models;
+
+namespace JobRunner.Domain.Interfaces;
 
 public interface IJobQueue
 {
@@ -6,7 +8,7 @@ public interface IJobQueue
 
     public Task<bool> TryAcquireAsync(Guid runId, DateTime nowUtc, CancellationToken ct);
 
-    public Task<Guid> CreateAttemptAsync(Guid runId, DateTime nowUtc, CancellationToken ct);
+    public Task<AttemptStart> CreateAttemptAsync(Guid runId, DateTime nowUtc, CancellationToken ct);
 
     public Task MarkSucceededAsync(Guid runId, Guid attemptId, DateTime nowUtc, CancellationToken ct);
 

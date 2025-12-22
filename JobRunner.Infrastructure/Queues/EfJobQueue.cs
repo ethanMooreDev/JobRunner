@@ -1,5 +1,6 @@
 ﻿using JobRunner.Domain.Interfaces;
 using JobRunner.Domain.Enums;
+using JobRunner.Domain.Models;
 using JobRunner.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using JobRunner.Domain.Entities;
@@ -46,24 +47,29 @@ public class EfJobQueue : IJobQueue
         return rowsAffected == 1;
     }
 
-    public async Task<Guid> CreateAttemptAsync(Guid runId, DateTime nowUtc, CancellationToken ct)
+    public async Task<AttemptStart> CreateAttemptAsync(Guid runId, DateTime nowUtc, CancellationToken ct)
     {
-        var jobAttemptsCount = await _db.JobRuns
+        var attemptInfo = await _db.JobRuns
             .AsNoTracking()
-            .Where(r => r.Id == runId && r.Status == RunStatus.Running)
-            .Select(r => (int?)r.JobAttempts.Count)
+            .Where(r => r.Id == runId && r.Job != null && r.Status == RunStatus.Running)
+            .Select(r => new { r.JobAttempts.Count, r.Job!.MaxAttempts })
             .FirstOrDefaultAsync(ct);
 
-        if (jobAttemptsCount == null)
+        if (attemptInfo == null)
         {
             throw new InvalidOperationException($"Cannot create attempt for job run {runId} because it does not exist or is not running.");
+        }
+
+        if(attemptInfo.MaxAttempts <= 0)
+        {
+            throw new InvalidOperationException($"Cannot create attempt for job run {runId} because the job allows zero attempts.");
         }
 
         var attempt = new JobAttempt
         {
             Id = Guid.NewGuid(),
             JobRunId = runId,
-            AttemptNumber = jobAttemptsCount.Value + 1,
+            AttemptNumber = attemptInfo.Count + 1,
             Status = AttemptStatus.Running,
             CreatedAtUtc = nowUtc
         };
@@ -72,7 +78,7 @@ public class EfJobQueue : IJobQueue
 
         await _db.SaveChangesAsync(ct);
 
-        return attempt.Id;
+        return new AttemptStart(attempt.Id, attempt.AttemptNumber, attemptInfo.MaxAttempts);
     }
     public async Task MarkSucceededAsync(Guid runId, Guid attemptId, DateTime nowUtc, CancellationToken ct)
     {
