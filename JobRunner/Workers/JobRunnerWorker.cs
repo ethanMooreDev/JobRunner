@@ -1,4 +1,7 @@
 ﻿using JobRunner.Domain.Interfaces;
+using JobRunner.Infrastructure.Data;
+using JobRunner.Services;
+using Microsoft.EntityFrameworkCore;
 
 namespace JobRunner.Workers;
 
@@ -44,10 +47,21 @@ public class JobRunnerWorker : BackgroundService
 
                         try
                         {
-                            // Simulate job processing
-                            await Task.Delay(TimeSpan.FromMilliseconds(500), stoppingToken);
+                            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
 
-                            await jobQueue.MarkSucceededAsync(runId.Value, attemptId, DateTime.UtcNow, stoppingToken);
+                            var runIdValue = runId.Value;
+
+                            var jobType = await db.JobRuns
+                                .AsNoTracking()
+                                .Where(r => r.Id == runIdValue)
+                                .Select(r => r.Job!.JobType)
+                                .SingleAsync(stoppingToken);
+
+                            var dispatcher = scope.ServiceProvider.GetRequiredService<JobDispatcher>();
+
+                            await dispatcher.ExecuteAsync(jobType, runIdValue, stoppingToken);
+
+                            await jobQueue.MarkSucceededAsync(runIdValue, attemptId, DateTime.UtcNow, stoppingToken);
                         }
                         catch (Exception ex)
                         {

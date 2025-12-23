@@ -1,6 +1,9 @@
 using JobRunner.Domain.Interfaces;
 using JobRunner.Infrastructure.Data;
+using JobRunner.Infrastructure.Handlers;
 using JobRunner.Infrastructure.Queues;
+using JobRunner.Infrastructure.Stores;
+using JobRunner.Services;
 using JobRunner.Workers;
 using Microsoft.EntityFrameworkCore;
 
@@ -13,6 +16,15 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 
 builder.Services.AddScoped<IJobQueue, EfJobQueue>();
 builder.Services.AddHostedService<JobRunnerWorker>();
+
+builder.Services.AddScoped<IExternalApiResultStore, ExternalApiResultStore>();
+
+builder.Services.AddSingleton<IJobHandler, NoOpJobHandler>();
+
+builder.Services.AddHttpClient("open-meteo");
+builder.Services.AddScoped<IJobHandler, OpenMeteoForecastJobHandler>();
+
+builder.Services.AddScoped<JobDispatcher>();
 
 builder.Services.AddControllers();
 builder.Services.AddOpenApi();

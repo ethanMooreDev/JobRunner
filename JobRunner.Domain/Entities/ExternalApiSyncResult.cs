@@ -11,4 +11,9 @@ public class ExternalApiSyncResult
 
     public Guid? JobRunId { get; set; }
     public JobRun? JobRun { get; set; }
+
+    public string Provider { get; set; } = "";
+    public int HttpStatusCode { get; set; }
+    public string? ResponseBody { get; set; }
+    public string? Error { get; set; }
 }
