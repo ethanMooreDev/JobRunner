@@ -1,4 +1,4 @@
-﻿namespace JobRunner.Models.Responses.JobRuns;
+﻿namespace JobRunner.Models.Responses;
 
 public sealed class ExternalApiResultResponse
 {
