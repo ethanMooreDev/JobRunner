@@ -42,6 +42,7 @@ public class JobRunnerWorker : BackgroundService
                         var attemptId = attemptStart.AttemptId;
                         var attemptNumber = attemptStart.AttemptNumber;
                         var maxAttempts = attemptStart.MaxAttempts;
+                        string? jobType = null;
 
                         _logger.LogInformation("Attempt {AttemptNumber}/{MaxAttempts}", attemptNumber, maxAttempts);
 
@@ -51,11 +52,15 @@ public class JobRunnerWorker : BackgroundService
 
                             var runIdValue = runId.Value;
 
-                            var jobType = await db.JobRuns
+                            jobType = await db.JobRuns
                                 .AsNoTracking()
                                 .Where(r => r.Id == runIdValue)
                                 .Select(r => r.Job!.JobType)
                                 .SingleAsync(stoppingToken);
+
+                            _logger.LogInformation(
+                                "Job succeeded. RunId={RunId} AttemptId={AttemptId} JobType={JobType}",
+                                runId, attemptId, jobType);
 
                             var dispatcher = scope.ServiceProvider.GetRequiredService<JobDispatcher>();
 
@@ -65,20 +70,23 @@ public class JobRunnerWorker : BackgroundService
                         }
                         catch (Exception ex)
                         {
-                            _logger.LogError(ex, "Job run {JobRunId} (Attempt {AttemptNumber}/{MaxAttempts}) failed during processing.", runId.Value, attemptNumber, maxAttempts);
+                            _logger.LogError(
+                                ex,
+                                "Job failed. RunId={RunId} AttemptId={AttemptId} JobType={JobType}",
+                                runId, attemptId, jobType ?? "<unknown>");
 
                             var failedAtUtc = DateTime.UtcNow;
-                            var terminal = attemptNumber >= maxAttempts;
+                            var terminal = IsPermanent(ex) || attemptNumber >= maxAttempts;
 
                             if (!terminal)
                             {
                                 var backOff = GetBackOff(attemptNumber);
                                 _logger.LogInformation("Scheduling retry for job run {JobRunId} in {BackOff} seconds.", runId.Value, backOff.TotalSeconds);
-                                await jobQueue.MarkFailedAsync(runId.Value, attemptId, failedAtUtc, ex.ToString(), failedAtUtc.Add(backOff), terminal, stoppingToken);
+                                await jobQueue.MarkFailedAsync(runId.Value, attemptId, failedAtUtc, SanitizeError(ex), failedAtUtc.Add(backOff), terminal, stoppingToken);
                                 continue;
                             }
 
-                            await jobQueue.MarkFailedAsync(runId.Value, attemptId, failedAtUtc, ex.ToString(), null, terminal, stoppingToken);
+                            await jobQueue.MarkFailedAsync(runId.Value, attemptId, failedAtUtc, SanitizeError(ex), null, terminal, stoppingToken);
                             continue;
                         }
                     }
@@ -111,4 +119,16 @@ public class JobRunnerWorker : BackgroundService
     {
         return TimeSpan.FromSeconds(Math.Min(300, 5 * Math.Pow(2, attemptNumber - 1)));
     }
+
+    private static bool IsPermanent(Exception ex)
+    {
+        return ex is InvalidOperationException;
+    }
+
+    private static string SanitizeError(Exception ex)
+    {
+        return $"{ex.GetType().Name}: {ex.Message}";
+    }
+
+
 }

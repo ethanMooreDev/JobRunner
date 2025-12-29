@@ -62,7 +62,7 @@ public class JobRunsController : Controller
                 RunId = r.Id,
                 JobType = r.Job != null ? r.Job.JobType : "",
                 Status = r.Status.ToString(),
-                NextVisibleUtc = r.NextVisibleUtc ?? r.CreatedAtUtc,
+                NextVisibleUtc = r.NextVisibleUtc,
                 StartedAtUtc = r.StartedAtUtc,
                 CompletedAtUtc = r.CompletedAtUtc
             })
@@ -128,7 +128,7 @@ public class JobRunsController : Controller
                 RunId = r.Id,
                 JobType = r.Job != null ? r.Job.JobType : "",
                 Status = r.Status.ToString(),
-                NextVisibleUtc = r.NextVisibleUtc ?? r.CreatedAtUtc,
+                NextVisibleUtc = r.NextVisibleUtc,
                 StartedAtUtc = r.StartedAtUtc,
                 CompletedAtUtc = r.CompletedAtUtc,
 

@@ -143,7 +143,7 @@ public class EfJobQueue : IJobQueue
                jobRun
                     .SetProperty(s => s.Status, RunStatus.Failed)
                     .SetProperty(s => s.CompletedAtUtc, nowUtc)
-                    .SetProperty(s => s.NextVisibleUtc, (DateTime?)null)
+                    .SetProperty(s => s.NextVisibleUtc, (DateTime?) null)
                     .SetProperty(s => s.Version, s => s.Version + 1);
            }, ct);
         }
